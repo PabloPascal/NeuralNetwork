@@ -1,0 +1,3 @@
+[submodule "numerical"]
+	path = numerical
+	url = git@github.com:PabloPascal/numerical.git
