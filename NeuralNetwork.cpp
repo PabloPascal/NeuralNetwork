@@ -2,95 +2,179 @@
 #include <iostream>
 
 
-NeuralNetwork::NeuralNetwork(size_t len) : input(len), output(1)
+NeuralNetwork::NeuralNetwork(
+    std::vector<size_t>& architecture, 
+    std::unique_ptr<activation> a_func):
+m_active(std::move(a_func)),
+m_architecture(architecture), 
+m_input(m_architecture[0]),
+m_output(m_architecture[m_architecture.size()-1])
 {   
-    LIN::Matrix<double> W1(2, 2);
-    LIN::Matrix<double> W2(1, 2);
 
-    W1.random_init();
-    W2.random_init();
+    for(size_t i = 0; i < m_architecture.size() - 1; i++)
+    {
+        mat w(m_architecture[i + 1], m_architecture[i]); 
+        w.random_init(0, 100, true);
+        vec bias(m_architecture[i + 1]);
+        bias.random_init(0, 100, true);
 
-    W1 = W1 * (1.0 / 100.0);
-    W2 = W2 * (1.0 / 100.0);
+        m_weights.emplace_back(std::move(w));
+        m_bias.emplace_back(std::move(bias));
+        m_hidden.emplace_back(vec(m_architecture[i + 1]));
+        m_zValues.emplace_back(vec(m_architecture[i+1]));
+    }   
 
-    vec b1(2);
-    vec b2(1);
 
-    b1.random_init();
-    b2.random_init();
-
-    b1 = (1.0/ 100.0) * b1;
-    b2 = (1.0/ 100.0) * b2;
-
-    weights.push_back(W1);
-    weights.push_back(W2);
-    
-    bias.push_back(b1);
-    bias.push_back(b2);
-    
-    hidden.push_back(vec(2));
-    hidden.push_back(vec(1));
-    
 }
 
 
-void NeuralNetwork::forward(const vec& train_data)
+void NeuralNetwork::forward(const vec& input_data)
 {
-    input = train_data;
+    m_input = input_data;
 
-    hidden[0] = weights[0] * input + bias[0];
-    hidden[0] = activate(hidden[0]);
+    m_zValues[0] = m_weights[0]*m_input + m_bias[0];
+    m_hidden[0] = (*m_active)(m_zValues[0]);
 
-    hidden[1] = weights[1] * hidden[0] + bias[1];
-    output = activate(hidden[1]);
+
+    for(size_t layer = 1; layer < m_weights.size(); layer++)
+    {
+        m_zValues[layer] = m_weights[layer] * m_hidden[layer - 1] + m_bias[layer];
+        m_hidden[layer] = (*m_active)(m_zValues[layer]);
+    }
+
+    m_output = m_hidden[m_weights.size() - 1];
+
 }
 
 
 
 void NeuralNetwork::back_propogation(const vec& target)
 {
+    size_t last_layer = m_weights.size() - 1;
+
     //1 step 
-    double delta_o = d_CROSS_ENTROPY(output, target) * activate.diff(hidden[1][0]);
+    vec delta_output = LIN::hadamar_product(d_MSE(target, m_output), m_active->diff(m_zValues[last_layer])); 
     
-    double delta_h1 = delta_o * weights[1](0,0) * hidden[0][0] * (1 - hidden[0][0]);
-    double delta_h2 = delta_o * weights[1](0,1) * hidden[0][1] * (1 - hidden[0][1]);
-
-    double dw1E = delta_o * hidden[0][0];
-    double dw2E = delta_o * hidden[0][1]; 
-
-    double db3E = delta_o;
-
-    double dw11E = delta_h1 * input[0];
-    double dw12E = delta_h1 * input[1];
-    double dw21E = delta_h2 * input[0];
-    double dw22E = delta_h2 * input[1];
+    mat dW_last = LIN::outer_product(delta_output, m_hidden[last_layer - 1]);
+    vec db_last = delta_output;
     
-    double db1E = delta_h1; 
-    double db2E = delta_h2;
+    std::vector<mat> gradients_W(m_weights.size());
+    std::vector<vec> gradients_b(m_bias.size());
+    std::vector<vec> deltas(m_weights.size());
 
-    mat dWE(2,2);
-    dWE.set(0, 0, dw11E);
-    dWE.set(0, 1, dw12E);
-    dWE.set(1, 0, dw21E);
-    dWE.set(1, 1, dw22E);
+    deltas[last_layer] = delta_output;
+    gradients_W[last_layer] = dW_last;
+    gradients_b[last_layer] = db_last;     
 
-    mat dWE1(1,2);
-    dWE1.set(0,0, dw1E);
-    dWE1.set(0,1, dw2E);
+    for(int l = last_layer - 1; l >= 0; l--) 
+    {
 
-    vec dbE(2);
-    dbE.set(0, db1E);
-    dbE.set(1, db2E);
-     
-    vec dbE1(1);
-    dbE1.set(0, db3E);
+        vec delta_current;
+        vec prev_hidden;
 
+        delta_current = LIN::hadamar_product(LIN::transpose(m_weights[l + 1]) * deltas[l + 1], m_active->diff(m_zValues[l])); 
 
-    weights[0] = weights[0] + (-train_speed) * dWE;
+        if(l==0)
+        {
+            prev_hidden = m_input;
+        }
+        else prev_hidden = m_hidden[l - 1];
 
-
-    weights[1] = weights[1] + (-train_speed) * dWE1;
-    bias[0] = bias[0] - train_speed * dbE;
-    bias[1] = bias[1] - train_speed * dbE1;
+        gradients_W[l] = LIN::outer_product(delta_current, prev_hidden);
+        gradients_b[l] = delta_current;
+        deltas[l] = delta_current;
+    }
     
+
+    for(int l = 0; l <= last_layer; l++)
+    {
+        m_weights[l] = m_weights[l] - m_learning_rate*gradients_W[l];
+        m_bias[l] = m_bias[l] - m_learning_rate * gradients_b[l];
+    }
+
+
+}
+
+
+
+
+void NeuralNetwork::fit(const std::vector<vec>& train_data, const std::vector<vec>& target_data)
+{
+    m_train_data = train_data;
+    m_target_data = target_data;
+
+    normalize_data();
+}
+
+
+
+void NeuralNetwork::normalize_data()
+{
+    size_t object_len = m_train_data[0].getSize();
+    size_t feature_len = m_train_data.size();
+
+    means.resize(object_len);
+    variance.resize(object_len);
+
+    for(size_t row = 0; row < feature_len ; row++)
+    {
+        for(size_t col = 0; col < object_len; col++)
+        {
+            means[col] += m_train_data[row][col] / feature_len;
+            variance[col] += m_train_data[row][col] * m_train_data[row][col] / feature_len; 
+        }
+    }
+    
+    for(size_t col = 0; col < object_len; col++){
+        std::cout << "mean = " << means[col] << ", ";
+        variance[col] -= means[col]*means[col];  
+        variance[col] = std::sqrt(variance[col]);
+
+        std::cout << "var = " << variance[col] << std::endl;
+
+    }
+    
+
+    for(size_t row = 0; row < feature_len ; row++)
+    {
+        for(size_t col = 0; col < object_len; col++)
+        {
+            double cur_data = m_train_data[row][col];
+            m_train_data[row][col] = (cur_data - means[col]) / variance[col];
+        }
+    }
+}
+
+
+
+
+void NeuralNetwork::train(size_t EPOCH_NUM)
+{   
+    for(size_t epoch = 0; epoch < EPOCH_NUM; epoch++)
+    {
+        for(size_t i = 0; i < m_train_data.size(); i++)
+        {
+            forward(m_train_data[i]);
+            back_propogation(m_target_data[i]);
+        }
+    }
+
+}
+
+
+
+
+vec NeuralNetwork::predict(vec data, bool normalize)
+{
+    if(normalize)
+    {
+        for(size_t i = 0; i < data.getSize(); i++)
+        {
+            data[i] = (data[i] - means[i]) / variance[i];
+        }
+    }
+
+    forward(data);
+    return m_output;
+
 }
