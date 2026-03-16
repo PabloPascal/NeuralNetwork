@@ -9,6 +9,9 @@ main.cpp
 activation_function.hpp 
 NeuralNetwork.hpp 
 NeuralNetwork.cpp
+tests.hpp
+logger.hpp
+utils.hpp
 
 numerical/linalg.hpp
 numerical/matrix_type.hpp

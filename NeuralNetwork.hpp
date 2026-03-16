@@ -17,14 +17,14 @@ using mat = LIN::Matrix<double>;
 
 inline double MSE(const vec& y_true, const vec& y_pred)
 {
-    return LIN::dot_product(y_true - y_pred, y_true - y_pred) / y_true.getSize();
+    return LIN::dot_product(y_true - y_pred, y_true - y_pred) / 2.0;
 }
 
 inline vec d_MSE(const vec& y_true, const vec& y_pred)
 {
     vec res(y_true.getSize());
     for(size_t i = 0; i < y_true.getSize(); i++)
-        res[i] = 2.0 * (y_pred[i] - y_true[i]) / y_true.getSize();
+        res[i] = (y_pred[i] - y_true[i]);
     
     return res;
 }
@@ -55,7 +55,9 @@ class NeuralNetwork
     
 
     std::unique_ptr<activation> m_active;
-    double                      m_learning_rate = 0.5; 
+    std::unique_ptr<activation> m_output_active;
+
+    double                      m_learning_rate = 0.1; 
 
     std::vector<vec>    m_train_data;
     std::vector<vec>    m_target_data;
@@ -65,8 +67,10 @@ class NeuralNetwork
 public:
 
 
-    NeuralNetwork(std::vector<size_t>& architecture, 
-                 std::unique_ptr<activation> a_func = std::make_unique<sigmoid>());
+    NeuralNetwork(  std::vector<size_t>& architecture, 
+                    std::unique_ptr<activation> a_func = std::make_unique<sigmoid>(),
+                    std::unique_ptr<activation> output_activate_func = std::make_unique<Line>()
+                );
 
     void set_activation_function(std::unique_ptr<activation>&& func) {
         m_active = std::move(func);
@@ -87,7 +91,7 @@ public:
     std::vector<vec> get_train_data() {return m_train_data;}
     std::vector<vec> get_target_data() {return m_target_data;}
 
-    void fit(const std::vector<vec>& train_data, const std::vector<vec>& target_data);
+    void fit(const std::vector<vec>& train_data, const std::vector<vec>& target_data, bool normalize);
     void train(size_t EPOCH_NUM);
 
 private:

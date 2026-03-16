@@ -4,11 +4,14 @@
 
 NeuralNetwork::NeuralNetwork(
     std::vector<size_t>& architecture, 
-    std::unique_ptr<activation> a_func):
-m_active(std::move(a_func)),
-m_architecture(architecture), 
-m_input(m_architecture[0]),
-m_output(m_architecture[m_architecture.size()-1])
+    std::unique_ptr<activation> a_func,
+    std::unique_ptr<activation> output_activate_func
+):
+        m_active(std::move(a_func)),
+        m_output_active(std::move(output_activate_func)), //по умолчанию ставлю функцию активации выходного слоя
+        m_architecture(architecture), 
+        m_input(m_architecture[0]),
+        m_output(m_architecture[m_architecture.size()-1])
 {   
 
     for(size_t i = 0; i < m_architecture.size() - 1; i++)
@@ -42,7 +45,9 @@ void NeuralNetwork::forward(const vec& input_data)
         m_hidden[layer] = (*m_active)(m_zValues[layer]);
     }
 
-    m_output = m_hidden[m_weights.size() - 1];
+    size_t last = m_weights.size() - 1;
+    m_zValues[last] = m_weights[last] * m_hidden[last - 1] + m_bias[last];
+    m_output = (*m_output_active)(m_zValues[last]);
 
 }
 
@@ -53,8 +58,11 @@ void NeuralNetwork::back_propogation(const vec& target)
     size_t last_layer = m_weights.size() - 1;
 
     //1 step 
-    vec delta_output = LIN::hadamar_product(d_MSE(target, m_output), m_active->diff(m_zValues[last_layer])); 
+    //vec delta_output = LIN::hadamar_product(d_MSE(target, m_output), m_active->diff(m_zValues[last_layer])); 
     
+    vec delta_output = LIN::hadamar_product(d_MSE(target, m_output), m_output_active->diff(m_zValues[last_layer]));
+
+
     mat dW_last = LIN::outer_product(delta_output, m_hidden[last_layer - 1]);
     vec db_last = delta_output;
     
@@ -98,12 +106,13 @@ void NeuralNetwork::back_propogation(const vec& target)
 
 
 
-void NeuralNetwork::fit(const std::vector<vec>& train_data, const std::vector<vec>& target_data)
+void NeuralNetwork::fit(const std::vector<vec>& train_data, const std::vector<vec>& target_data, bool normalize)
 {
     m_train_data = train_data;
     m_target_data = target_data;
 
-    normalize_data();
+    if(normalize)
+        normalize_data();
 }
 
 
@@ -126,7 +135,9 @@ void NeuralNetwork::normalize_data()
     }
     
     for(size_t col = 0; col < object_len; col++){
+
         std::cout << "mean = " << means[col] << ", ";
+
         variance[col] -= means[col]*means[col];  
         variance[col] = std::sqrt(variance[col]);
 
