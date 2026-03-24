@@ -49,4 +49,77 @@ struct sigmoid : activation
 };
 
 
+struct Line : activation
+{
+    double operator()(double x) override
+    {
+        return x;
+    }
+    LIN::Vector<double> operator()(const LIN::Vector<double>& vec) override
+    {
+        LIN::Vector<double> result(vec.getSize());
+        for(size_t i = 0; i < vec.getSize(); i++)
+        {
+            result.set(i, this->operator()(vec[i]));
+        }
+        return result;
+
+    }   
+    double diff(double x) override
+    {
+        return 1;
+    }
+
+    LIN::Vector<double> diff(const LIN::Vector<double>& v) override
+    {
+        LIN::Vector<double> res(v.getSize());
+        for(int i = 0; i < v.getSize(); i++)
+        {
+            res[i] = diff(v[i]);
+        }
+        return res;
+    }
+
+
+};
+
+
+
+
+
+struct ReLu : activation
+{
+    double operator()(double x) override
+    {
+        return x > 0 ? x : 0;
+    }
+    LIN::Vector<double> operator()(const LIN::Vector<double>& vec) override
+    {
+        LIN::Vector<double> result(vec.getSize());
+        for(size_t i = 0; i < vec.getSize(); i++)
+        {
+            result.set(i, this->operator()(vec[i]));
+        }
+        return result;
+
+    }   
+    double diff(double x) override
+    {
+        return x > 0 ? 1 : 0;
+    }
+
+    LIN::Vector<double> diff(const LIN::Vector<double>& v) override
+    {
+        LIN::Vector<double> res(v.getSize());
+        for(int i = 0; i < v.getSize(); i++)
+        {
+            res[i] = diff(v[i]);
+        }
+        return res;
+    }
+
+
+};
+
+
 #endif 
